@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF a CAD</title>
+<meta name="description" content="Convierte planos PDF a DXF reconstruyendo los hatches. Todo se procesa en tu navegador.">
+<link rel="stylesheet" href="style.css?v=ca107bc09a">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">PDF<b>→</b>CAD</span><span class="sub">Reconstrucción de hatches</span></div>
+  <div class="file" id="fileInfo">Sin archivo</div>
+  <div class="page-sel hidden" id="pageSel">
+    <button id="pgPrev" title="Página anterior">‹</button>
+    <span id="pgLabel">1 / 1</span>
+    <button id="pgNext" title="Página siguiente">›</button>
+  </div>
+  <div class="spacer"></div>
+  <label class="btn ghost" title="Abrir otro PDF">Abrir PDF<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden></label>
+  <button class="btn primary" id="btnDxf" disabled>Exportar DXF</button>
+</header>
+
+<main class="layout">
+  <!-- ============ panel izquierdo: recomendaciones y ajustes ============ -->
+  <aside class="side left" id="leftPanel">
+    <section class="card" id="recsCard">
+      <h3>Recomendaciones</h3>
+      <p class="muted" id="recsEmpty">Carga un PDF para analizarlo.</p>
+      <ul class="recs" id="recs"></ul>
+      <div class="metrics" id="metrics"></div>
+    </section>
+
+    <section class="card">
+      <h3>Escala y unidades</h3>
+      <div class="row">
+        <label>Escala</label>
+        <div class="inline"><span>1 :</span><input type="number" id="o_scale_ratio" min="0.01" step="any" value="1"></div>
+      </div>
+      <div class="row">
+        <label>Unidades del dibujo</label>
+        <select id="o_units"><option value="mm">Milímetros</option><option value="cm">Centímetros</option><option value="m">Metros</option></select>
+      </div>
+      <div class="row">
+        <button class="btn small" id="btnCalib">📏 Calibrar con una cota</button>
+      </div>
+      <p class="hint" id="scaleInfo"></p>
+    </section>
+
+    <section class="card">
+      <h3>Capas</h3>
+      <div class="row">
+        <label>Crear capas</label>
+        <select id="o_layer_mode">
+          <option value="ocg">Capas del PDF (si existen)</option>
+          <option value="color">Por color</option>
+          <option value="color_width">Por color + grosor</option>
+          <option value="single">Una sola capa</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Hatches y rellenos en</label>
+        <select id="o_hatch_layer">
+          <option value="same">Misma capa que su origen</option>
+          <option value="suffix">Capa propia (_HATCH)</option>
+          <option value="single">Capa única "HATCH"</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Hatches de patrón</h3>
+      <label class="check"><input type="checkbox" id="o_detect_hatches"> Reconstruir hatches desde líneas explotadas</label>
+      <div class="row">
+        <label>Tipo de patrón</label>
+        <select id="o_hatch_style">
+          <option value="ansi">Predefinido (ANSI31 / ANSI37)</option>
+          <option value="user">Definido por usuario</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="o_hatch_snap"> Ajustar contorno a muros/líneas existentes</label>
+      <label class="check"><input type="checkbox" id="o_hatch_dashes"> Detectar patrones discontinuos</label>
+      <label class="check"><input type="checkbox" id="o_hatch_boundary"> Contorno asociativo: polilínea cerrada ligada al hatch (capa _CONTORNO, no se imprime)</label>
+      <label class="check"><input type="checkbox" id="o_fix_overlaps"> Evitar solapes entre hatches y rellenos</label>
+      <details>
+        <summary>Sensibilidad</summary>
+        <div class="row"><label>Líneas mínimas</label><input type="number" id="o_hatch_min_lines" min="3" max="50" step="1"></div>
+        <div class="row"><label>Espaciado máx. (mm papel)</label><input type="number" id="o_hatch_max_spacing_mm" min="1" max="60" step="0.5"></div>
+        <div class="row"><label>Tolerancia ángulo (°)</label><input type="number" id="o_hatch_angle_tol" min="0.05" max="5" step="0.05"></div>
+        <div class="row"><label>Tolerancia espaciado (%)</label><input type="number" id="o_hatch_spacing_tol_pct" min="1" max="50" step="1"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h3>Rellenos sólidos</h3>
+      <label class="check"><input type="checkbox" id="o_fills"> Convertir a HATCH SOLID</label>
+      <label class="check"><input type="checkbox" id="o_merge_fills"> Fusionar fragmentos del mismo color</label>
+      <label class="check"><input type="checkbox" id="o_skip_white_fills"> Omitir rellenos blancos (máscaras)</label>
+    </section>
+
+    <section class="card">
+      <h3>Líneas y curvas</h3>
+      <label class="check"><input type="checkbox" id="o_clip_paths"> Aplicar trazados de recorte</label>
+      <label class="check"><input type="checkbox" id="o_curves_to_arcs"> Curvas → arcos y círculos</label>
+      <label class="check"><input type="checkbox" id="o_join_polylines"> Unir trazos en polilíneas</label>
+      <label class="check"><input type="checkbox" id="o_merge_collinear"> Unir colineales / quitar duplicados</label>
+      <label class="check"><input type="checkbox" id="o_lineweights"> Conservar grosores (lineweight)</label>
+      <label class="check"><input type="checkbox" id="o_linetypes"> Crear tipos de línea discontinuos</label>
+    </section>
+
+    <section class="card">
+      <h3>Texto</h3>
+      <label class="check"><input type="checkbox" id="o_texts"> Exportar textos editables</label>
+      <div class="row"><label>Factor de altura</label><input type="number" id="o_text_height_factor" min="0.3" max="1.2" step="0.01"></div>
+    </section>
+  </aside>
+
+  <!-- ============ visor ============ -->
+  <section class="viewer" id="viewer">
+    <canvas id="cv"></canvas>
+    <div class="drop" id="drop">
+      <div class="drop-inner">
+        <div class="drop-icon">⇩</div>
+        <h2>Arrastra aquí tu plano PDF</h2>
+        <p>o <label class="link">búscalo en tu equipo<input type="file" id="fileInput2" accept="application/pdf,.pdf" hidden></label></p>
+        <p class="muted">Se analiza en tu equipo: nada se sube a internet.</p>
+      </div>
+    </div>
+    <div class="toolbar hidden" id="toolbar">
+      <button id="tFit" title="Ajustar a la ventana (F)">⤢ Ajustar</button>
+      <span class="sep"></span>
+      <label class="tg"><input type="checkbox" id="vPdf"> PDF original</label>
+      <input type="range" id="vPdfOpacity" min="0" max="100" value="45" title="Opacidad del PDF">
+      <span class="sep"></span>
+      <label class="tg"><input type="checkbox" id="vHatch" checked> Hatches</label>
+      <label class="tg"><input type="checkbox" id="vFill" checked> Rellenos</label>
+      <label class="tg"><input type="checkbox" id="vLines" checked> Líneas</label>
+      <label class="tg"><input type="checkbox" id="vText" checked> Textos</label>
+      <span class="sep"></span>
+      <label class="tg"><input type="checkbox" id="vDark"> Fondo CAD</label>
+    </div>
+    <div class="busy hidden" id="busy"><div class="spinner"></div><span id="busyMsg">Procesando…</span></div>
+    <div class="progress hidden" id="prog" role="status" aria-live="polite">
+      <div class="prog-box">
+        <div class="prog-head"><span class="spinner"></span><span id="progTitle">Procesando</span></div>
+        <div class="prog-bar"><div id="progFill"></div></div>
+        <div class="prog-row"><span id="progMsg">Iniciando…</span><b id="progPct">0%</b></div>
+        <div class="prog-time" id="progTime"></div>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="calib hidden" id="calibBar">
+      <span id="calibMsg">Haz clic en el primer punto de una cota conocida</span>
+      <button class="btn small ghost" id="calibCancel">Cancelar</button>
+    </div>
+  </section>
+
+  <!-- ============ panel derecho: resultado ============ -->
+  <aside class="side right" id="rightPanel">
+    <section class="card">
+      <h3>Resultado</h3>
+      <div class="stats" id="stats"><p class="muted">—</p></div>
+    </section>
+    <section class="card">
+      <h3>Hatches <span class="badge" id="hCount">0</span></h3>
+      <div class="seg" id="hFilter">
+        <button data-f="all" class="on">Todos</button>
+        <button data-f="suspect">Dudosos</button>
+        <button data-f="rejected">Rechazados</button>
+      </div>
+      <div class="hatch-detail hidden" id="hDetail"></div>
+      <ul class="hlist" id="hList"></ul>
+      <div class="row gap">
+        <button class="btn small" id="btnRejectSuspect">Rechazar dudosos</button>
+        <button class="btn small ghost" id="btnRestoreAll">Restaurar todos</button>
+      </div>
+      <p class="hint">Clic en un hatch del visor para seleccionarlo. Tecla <kbd>R</kbd>: rechazar / restaurar.</p>
+    </section>
+    <section class="card">
+      <h3>Capas <span class="badge" id="lCount">0</span></h3>
+      <p class="hint">👁 visible en el visor · ☑ se exporta · escribe para renombrar</p>
+      <ul class="llist" id="lList"></ul>
+    </section>
+  </aside>
+</main>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-box">
+    <h3 id="mTitle">Calibrar escala</h3>
+    <p id="mText"></p>
+    <div class="inline"><input type="number" id="mInput" step="any"><span id="mUnits">mm</span></div>
+    <div class="row gap end">
+      <button class="btn ghost" id="mCancel">Cancelar</button>
+      <button class="btn primary" id="mOk">Aplicar</button>
+    </div>
+  </div>
+</div>
+<div class="toast hidden" id="toast"></div>
+
+<script src="engine.js?v=ca107bc09a"></script>
+<script src="app.js?v=ca107bc09a"></script>
+</body>
+</html>

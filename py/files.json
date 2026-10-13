@@ -1,0 +1,18 @@
+{
+ "version": "ca107bc09a",
+ "sources": [
+  "bridge.py",
+  "core/__init__.py",
+  "core/analyze.py",
+  "core/cleanup.py",
+  "core/compat.py",
+  "core/dxfout.py",
+  "core/extract.py",
+  "core/fills.py",
+  "core/geom.py",
+  "core/hatch.py",
+  "core/pipeline.py",
+  "core/preview.py"
+ ],
+ "ezdxf_wheel": "ezdxf-1.4.4-py3-none-any.whl"
+}
